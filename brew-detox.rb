@@ -1,6 +1,6 @@
 require "formula"
 
-class BrewHangover < Formula
+class BrewDetox < Formula
   homepage "https://github.com/alebcay/detox"
   head "https://github.com/alebcay/detox.git"
 

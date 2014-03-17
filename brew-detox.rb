@@ -2,7 +2,7 @@ require "formula"
 
 class BrewDetox < Formula
   homepage "https://github.com/alebcay/detox"
-  head "https://github.com/alebcay/detox.git"
+  url "https://github.com/alebcay/homebrew-brewtap/archive/master.zip"
 
   skip_clean 'bin'
 

@@ -4,11 +4,10 @@ class Adbfs < Formula
   head "https://github.com/isieo/adbfs.git"
 
   depends_on "pkg-config" => :build
-
-  env :std
+  depends_on "libfuse"
+  depends_on :linux # on macOS, requires closed-source macFUSE
 
   def install
-    ENV.O3
     system "make"
     bin.install "adbfs"
   end

@@ -1,5 +1,3 @@
-require "formula"
-
 class Histo < Formula
   homepage "https://github.com/visionmedia/histo"
   url "https://github.com/visionmedia/histo/archive/0.0.2.tar.gz"
@@ -10,9 +8,8 @@ class Histo < Formula
     system "make"
     bin.install "histo"
   end
-    
+
   test do
-    system 'histo --help'
-    system 'histo --version'  
+    system "histo", "--version"
   end
 end

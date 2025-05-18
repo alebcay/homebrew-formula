@@ -8,12 +8,10 @@ class MacUtils < Formula
   uses_from_macos "swift"
 
   def install
-    excluded = %w[SetNativeBrightness]
-
+    # Don't use prebuilt binaries
     rm_rf (buildpath/"bin").children
-    rm excluded.map { |item| "#{item}.swift" }
+
     system "make", "all"
-    rm Dir.glob("bin/*-{arm64,x86}")
     bin.install (buildpath/"bin").children
   end
 

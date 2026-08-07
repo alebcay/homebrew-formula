@@ -1,0 +1,152 @@
+name: Publish
+
+run-name: "Publish PR #${{ inputs.pull_request }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number
+        type: number
+        required: true
+
+concurrency:
+  group: publish-${{ inputs.pull_request }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+  checks: read
+  packages: write
+
+env:
+  PR: ${{ inputs.pull_request }}
+  GH_REPO: ${{ github.repository }}
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  GH_NO_UPDATE_NOTIFIER: "1"
+  GH_PROMPT_DISABLED: "1"
+
+defaults:
+  run:
+    shell: bash -xeuo pipefail {0}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR approval
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          author="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq '.user.login')"
+          if [[ "${author,,}" == "${GITHUB_ACTOR,,}" ]]
+          then
+            echo "::notice ::PR #${PR} is authored by the workflow dispatcher; dispatching counts as approval."
+          elif jq --exit-status 'all(.[].state; . != "APPROVED")'
+          then
+            echo "::error ::PR #${PR} is not approved!"
+            exit 1
+          fi < <(
+            gh api --paginate "repos/${GH_REPO}/pulls/${PR}/reviews"
+          )
+
+      - name: Check PR is open
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          state="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq '.state')"
+          if [[ "${state}" != "open" ]]
+          then
+            echo "::error ::PR #${PR} is not open (state: ${state})!"
+            exit 1
+          fi
+
+  publish:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        with:
+          core: false
+
+      - name: Install skopeo
+        run: brew install skopeo
+
+      - name: Configure Git
+        uses: Homebrew/actions/git-user-config@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        with:
+          username: github-actions[bot]
+
+      - name: Check out pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr checkout "$PR" --repo "$GH_REPO"
+
+      - name: Wait for CI checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr checks "$PR" --watch --interval 30
+
+      - name: Pull bottles
+        id: pull-bottles
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ""
+        run: |
+          brew pr-pull \
+            --no-upload \
+            --clean \
+            --no-cherry-pick \
+            --workflows=tests.yml \
+            --tap=alebcay/formula \
+            --root-url="https://ghcr.io/v2/alebcay/formula" \
+            --retain-bottle-dir \
+            "$PR"
+
+      - name: Upload bottles and apply bottle commit
+        working-directory: ${{ steps.pull-bottles.outputs.bottle_path }}
+        env:
+          HOMEBREW_GITHUB_PACKAGES_USER: alebcay
+          HOMEBREW_GITHUB_PACKAGES_TOKEN: ${{ secrets.HOMEBREW_GITHUB_PACKAGES_TOKEN }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_GIT_COMMITTER_NAME: github-actions[bot]
+          HOMEBREW_GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          brew pr-upload --root-url="https://ghcr.io/v2/alebcay/formula"
+
+      - name: Compute branch to push
+        id: push-branch
+        run: |
+          BRANCH="$(git branch --show-current)"
+          if [[ "${BRANCH}" == "main" ]]
+          then
+            echo "::error ::Cannot push to the default branch; publishing fork PRs whose head branch is 'main' is unsupported."
+            exit 1
+          fi
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+      - name: Push commits
+        uses: Homebrew/actions/git-try-push@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ steps.push-branch.outputs.branch }}
+
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          HEAD_SHA="$(git rev-parse HEAD)"
+          for _ in {1..10}
+          do
+            PR_HEAD="$(gh api "repos/${GH_REPO}/pulls/${PR}" --jq '.head.sha')"
+            [[ "${PR_HEAD}" == "${HEAD_SHA}" ]] && break
+            sleep 3
+          done
+          gh pr merge "$PR" --merge --match-head-commit "$HEAD_SHA" --repo "$GH_REPO"

@@ -1,0 +1,138 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths: [Formula/**]
+  pull_request:
+    paths: [Formula/**]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  tap_syntax:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        with:
+          core: false
+
+      - name: Run brew test-bot (tap syntax)
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew test-bot --only-tap-syntax --tap=alebcay/formula
+
+  formulae_detect:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    outputs:
+      testing_formulae: ${{ steps.detect.outputs.testing_formulae }}
+      added_formulae: ${{ steps.detect.outputs.added_formulae }}
+      deleted_formulae: ${{ steps.detect.outputs.deleted_formulae }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        with:
+          core: false
+
+      - name: Detect formulae
+        id: detect
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew test-bot --only-formulae-detect --tap=alebcay/formula
+
+  tests:
+    if: github.event_name == 'pull_request'
+    needs: [tap_syntax, formulae_detect]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            bottle_tag: arm64_sequoia
+          - runner: macos-15-intel
+            bottle_tag: x86_64_sequoia
+          - runner: ubuntu-24.04
+            bottle_tag: x86_64_linux
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        with:
+          core: false
+
+      - name: Filter to bottable formulae
+        id: filter
+        env:
+          TESTING_FORMULAE: ${{ needs.formulae_detect.outputs.testing_formulae }}
+          ADDED_FORMULAE: ${{ needs.formulae_detect.outputs.added_formulae }}
+          DELETED_FORMULAE: ${{ needs.formulae_detect.outputs.deleted_formulae }}
+        run: |
+          filter_bottable() {
+            local list="$1" out=""
+            local f
+            for f in ${list//,/ }; do
+              [ -n "$f" ] || continue
+              f="${f##*/}"
+              if grep -q '^  url "' "Formula/$f.rb"; then
+                out="${out:+$out,}$f"
+              fi
+            done
+            echo "$out"
+          }
+
+          BOTTLABLE_TESTING="$(filter_bottable "$TESTING_FORMULAE")"
+          BOTTLABLE_ADDED="$(filter_bottable "$ADDED_FORMULAE")"
+          {
+            echo "testing_formulae=${BOTTLABLE_TESTING}"
+            echo "added_formulae=${BOTTLABLE_ADDED}"
+            echo "deleted_formulae=${DELETED_FORMULAE}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run brew test-bot (build, bottle, test, dependents)
+        if: ${{ steps.filter.outputs.testing_formulae != '' || steps.filter.outputs.added_formulae != '' }}
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          TESTING_FORMULAE: ${{ steps.filter.outputs.testing_formulae }}
+          ADDED_FORMULAE: ${{ steps.filter.outputs.added_formulae }}
+          DELETED_FORMULAE: ${{ steps.filter.outputs.deleted_formulae }}
+        run: |
+          ARGS=()
+          [ -n "$TESTING_FORMULAE" ] && ARGS+=(--testing-formulae="$TESTING_FORMULAE")
+          [ -n "$ADDED_FORMULAE" ] && ARGS+=(--added-formulae="$ADDED_FORMULAE")
+          [ -n "$DELETED_FORMULAE" ] && ARGS+=(--deleted-formulae="$DELETED_FORMULAE")
+
+          brew test-bot --only-formulae --tap=alebcay/formula \
+            --root-url "https://ghcr.io/v2/alebcay/formula" \
+            --skip-online-checks "${ARGS[@]}"
+
+      - name: Upload bottle artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottles_${{ matrix.bottle_tag }}
+          path: |
+            *.bottle*.tar.gz
+            *.bottle*.json
+            failed/*
+          if-no-files-found: ignore

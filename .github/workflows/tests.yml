@@ -18,7 +18,7 @@ jobs:
   tap_syntax:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -41,7 +41,7 @@ jobs:
       added_formulae: ${{ steps.detect.outputs.added_formulae }}
       deleted_formulae: ${{ steps.detect.outputs.deleted_formulae }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -72,7 +72,7 @@ jobs:
           - runner: ubuntu-24.04
             bottle_tag: x86_64_linux
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

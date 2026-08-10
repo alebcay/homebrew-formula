@@ -9,7 +9,7 @@ class MacUtils < Formula
 
   def install
     # Don't use prebuilt binaries
-    rm_rf (buildpath/"bin").children
+    rm_r(buildpath/"bin").children
 
     system "make", "all"
     bin.install (buildpath/"bin").children

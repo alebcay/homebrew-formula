@@ -72,7 +72,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        uses: Homebrew/actions/setup-homebrew@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
         with:
           core: false
 

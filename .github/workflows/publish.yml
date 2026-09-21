@@ -80,7 +80,7 @@ jobs:
         run: brew install skopeo
 
       - name: Configure Git
-        uses: Homebrew/actions/git-user-config@b35a29a0f83ee8b8ca07b219fc8db3d7bb88ab49 # 2026.08.10.2
+        uses: Homebrew/actions/git-user-config@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
         with:
           username: github-actions[bot]
 

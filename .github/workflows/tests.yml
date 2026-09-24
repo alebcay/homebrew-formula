@@ -67,10 +67,12 @@ jobs:
         include:
           - runner: macos-15
             bottle_tag: arm64_sequoia
-          - runner: macos-15-intel
-            bottle_tag: x86_64_sequoia
+          - runner: macos-26
+            bottle_tag: arm64_tahoe
           - runner: ubuntu-24.04
             bottle_tag: x86_64_linux
+          - runner: ubuntu-24.04-arm
+            bottle_tag: arm64_linux
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

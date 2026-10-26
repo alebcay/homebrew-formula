@@ -133,7 +133,7 @@ jobs:
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
 
       - name: Push commits
-        uses: Homebrew/actions/git-try-push@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
+        uses: Homebrew/actions/git-try-push@d482da0e602890d3160aade42e72c8556103bf04 # 2026.10.26.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ steps.push-branch.outputs.branch }}
